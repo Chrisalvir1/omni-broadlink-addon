@@ -31,69 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const bannerPhase = document.getElementById('banner-phase');
   const bannerHint = document.getElementById('banner-hint');
 
-  const BUTTONS_BY_TYPE = {
-    switch: [
-      { key: 'power', label: 'Encendido (Toggle)', icon: '⏻' },
-      { key: 'on', label: 'ON', icon: 'I' },
-      { key: 'off', label: 'OFF', icon: 'O' }
-    ],
-    light: [
-      { key: 'power', label: 'Encendido', icon: '⏻' },
-      { key: 'brightness_up', label: 'Brillo +', icon: '☀' },
-      { key: 'brightness_down', label: 'Brillo -', icon: '◐' },
-      { key: 'warm', label: 'Luz Cálida', icon: '🔥' },
-      { key: 'cool', label: 'Luz Fría', icon: '❄' }
-    ],
-    fan: [
-      { key: 'power', label: 'Encendido', icon: '⏻' },
-      { key: 'speed_up', label: 'Velocidad +', icon: '+' },
-      { key: 'speed_down', label: 'Velocidad -', icon: '-' },
-      { key: 'speed_1', label: 'Velocidad 1', icon: '1' },
-      { key: 'speed_2', label: 'Velocidad 2', icon: '2' },
-      { key: 'speed_3', label: 'Velocidad 3', icon: '3' },
-      { key: 'oscillate', label: 'Oscilar', icon: '↔' },
-      { key: 'light', label: 'Luz', icon: '💡' }
-    ],
-    tv: [
-      { key: 'power', label: 'Encendido', icon: '⏻' },
-      { key: 'mute', label: 'Silencio', icon: '🔇' },
-      { key: 'source', label: 'Entrada', icon: '↗' },
-      { key: 'home', label: 'Home', icon: '🏠' },
-      { key: 'back', label: 'Atrás', icon: '⬅' },
-      { key: 'vol_up', label: 'Vol +', icon: '🔊' },
-      { key: 'vol_down', label: 'Vol -', icon: '🔈' },
-      { key: 'ch_up', label: 'Canal +', icon: '▲' },
-      { key: 'ch_down', label: 'Canal -', icon: '▼' },
-      { key: 'ok', label: 'OK', icon: '🔘' }
-    ],
-    audio: [
-      { key: 'power', label: 'Encendido', icon: '⏻' },
-      { key: 'mute', label: 'Silencio', icon: '🔇' },
-      { key: 'source', label: 'Entrada', icon: '↗' },
-      { key: 'vol_up', label: 'Vol +', icon: '🔊' },
-      { key: 'vol_down', label: 'Vol -', icon: '🔈' }
-    ],
-    climate: [
-      { key: 'power', label: 'Encendido', icon: '⏻' },
-      { key: 'temp_up', label: 'Temp +', icon: '+' },
-      { key: 'temp_down', label: 'Temp -', icon: '-' },
-      { key: 'mode', label: 'Modo', icon: '⚙' },
-      { key: 'fan_speed', label: 'Fan Speed', icon: '🌀' }
-    ],
-    projector: [
-      { key: 'power', label: 'Encendido', icon: '⏻' },
-      { key: 'source', label: 'Entrada', icon: '↗' },
-      { key: 'menu', label: 'Menú', icon: '☰' },
-      { key: 'back', label: 'Atrás', icon: '⬅' },
-      { key: 'ok', label: 'OK', icon: 'OK' }
-    ],
-    custom: [
-      { key: 'power', label: 'Encendido', icon: '⏻' },
-      { key: 'button_1', label: 'Botón 1', icon: '1' },
-      { key: 'button_2', label: 'Botón 2', icon: '2' }
-    ]
-  };
-
   async function fetchStatus(forceScan = false) {
     try {
       const res = await fetch(`api/broadlink/devices?force=${forceScan}`);
@@ -166,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     remotesGrid.innerHTML = names.map(name => {
       const remote = savedRemotes[name];
       const btns = Object.keys(remote.commands || {});
-      const slug = name.lowerCase ? name.lowerCase() : name.toLowerCase().replace(/ /g, '_');
+      const slug = name.toLowerCase().replace(/ /g, '_');
       const entityId = `${remote.domain || 'switch'}.omni_broadlink_${slug}`;
 
       return `
@@ -263,15 +200,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderWizardButtons() {
-    const category = wizDeviceType.value || 'switch';
-    const presetButtons = BUTTONS_BY_TYPE[category] || BUTTONS_BY_TYPE.custom;
-    const allButtons = [...presetButtons, ...customButtonsList];
+    if (customButtonsList.length === 0) {
+      wizButtonsGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
+          ✏️ Escriba el nombre del botón arriba y haga clic en <strong>+ Añadir Botón</strong> para agregarlo al control.
+        </div>
+      `;
+      return;
+    }
 
-    wizButtonsGrid.innerHTML = allButtons.map(btn => {
+    wizButtonsGrid.innerHTML = customButtonsList.map(btn => {
       const isCaptured = !!capturedCommands[btn.key];
       return `
         <div class="wiz-btn-item ${isCaptured ? 'captured' : ''}">
-          <span style="font-size:1.2rem;">${btn.icon || '🔘'}</span>
+          <span style="font-size:1.2rem;">${btn.icon || '⚡'}</span>
           <span class="wiz-btn-label">${btn.label}</span>
           <button class="btn ${isCaptured ? 'btn-secondary' : 'btn-primary'} btn-sm btn-learn-key" data-key="${btn.key}">
             ${isCaptured ? '✔ Capturado' : '⚡ Capturar'}
@@ -450,6 +392,12 @@ document.addEventListener('DOMContentLoaded', () => {
   btnCancelWizard.addEventListener('click', closeWizard);
   btnCancelLearning.addEventListener('click', cancelLearning);
   btnAddCustomButton.addEventListener('click', addCustomButton);
+  wizCustomBtnName.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addCustomButton();
+    }
+  });
   wizDeviceType.addEventListener('change', renderWizardButtons);
   wizRemoteName.addEventListener('input', updateSaveButtonState);
   wizSelectHub.addEventListener('change', updateSaveButtonState);
