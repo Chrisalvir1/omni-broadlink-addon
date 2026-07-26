@@ -1,0 +1,4 @@
+build_from:
+  amd64: "alpine:3.19"
+  aarch64: "alpine:3.19"
+  armv7: "alpine:3.19"

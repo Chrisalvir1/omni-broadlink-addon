@@ -1,0 +1,16 @@
+name: "Omni Broadlink"
+description: "Broadlink IR/RF Controller and Signal Learner Add-on for Home Assistant"
+version: "1.0.0"
+slug: "omni_broadlink"
+init: false
+host_network: true
+ingress: true
+ingress_port: 8000
+arch:
+  - amd64
+  - aarch64
+  - armv7
+homeassistant_api: true
+hassio_api: true
+options: {}
+schema: {}

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Omni Broadlink Control Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Top Header -->
+    <header class="app-header glass-card">
+      <div class="header-brand">
+        <div class="logo-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+            <path d="M12 6a6 6 0 1 0 6 6 6 6 0 0 0-6-6zm0 10a4 4 0 1 1 4-4 4 4 0 0 1-4 4z"/>
+            <circle cx="12" cy="12" r="2"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Omni Broadlink</h1>
+          <p class="subtitle">Controlador Inteligente de Señales IR & RF para Home Assistant</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-scan" class="btn btn-secondary">
+          <span class="icon">🔄</span> Escanear Red
+        </button>
+        <button id="btn-open-wizard" class="btn btn-primary">
+          <span class="icon">✨</span> Nuevo Control Remoto
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- Discovered Hubs Section -->
+      <section class="section">
+        <div class="section-header">
+          <h2>Concentradores Broadlink Detectados</h2>
+          <span id="hub-count-badge" class="badge">0 Dispositivos</span>
+        </div>
+        <div id="hubs-grid" class="grid-container">
+          <div class="empty-state glass-card">
+            <span class="loader"></span>
+            <p>Buscando concentradores Broadlink en la red local...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Saved Virtual Remotes Section -->
+      <section class="section">
+        <div class="section-header">
+          <h2>Controles Remotos Aprendidos</h2>
+          <span id="remote-count-badge" class="badge">0 Controles</span>
+        </div>
+        <div id="remotes-grid" class="grid-container">
+          <div class="empty-state glass-card">
+            <span class="empty-icon">🎮</span>
+            <p>No se han registrado controles remotos todavía.</p>
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('btn-open-wizard').click()">
+              + Crear primer control
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Wizard Modal for Creating / Learning Remotes -->
+    <div id="wizard-modal" class="modal-overlay hidden">
+      <div class="modal-card glass-card">
+        <div class="modal-header">
+          <h3>Wizard de Aprendizaje IR / RF</h3>
+          <button id="btn-close-wizard" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          
+          <!-- Step 1: Configuration Form -->
+          <div class="form-group">
+            <label for="wiz-remote-name">Nombre del Control / Dispositivo</label>
+            <input type="text" id="wiz-remote-name" placeholder="Ej. TV Sala, Aire Oficina, Ventilador Recámara" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="wiz-select-hub">Broadlink Hub Objetivo</label>
+              <select id="wiz-select-hub">
+                <option value="">Seleccione un dispositivo Broadlink...</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="wiz-remote-type">Tecnología de Señal</label>
+              <select id="wiz-remote-type">
+                <option value="IR">Infrarrojo (IR)</option>
+                <option value="RF">Radiofrecuencia (RF Auto Sweep)</option>
+                <option value="RF_433">Radiofrecuencia (RF 433.92 MHz)</option>
+                <option value="RF_315">Radiofrecuencia (RF 315.0 MHz)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="wiz-device-type">Tipo de Aparato</label>
+              <select id="wiz-device-type">
+                <option value="switch">Interruptor / Toma</option>
+                <option value="light">Luz / Tira LED</option>
+                <option value="fan">Ventilador</option>
+                <option value="tv">TV / Pantalla</option>
+                <option value="audio">Audio / Receiver</option>
+                <option value="climate">Aire Acondicionado</option>
+                <option value="projector">Proyector</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Buttons Learning Grid -->
+          <div class="learning-section">
+            <div class="learning-header">
+              <h4>Capturar Botones del Control</h4>
+              <p class="hint-text">Presione "Capturar" en cada botón que desee programar.</p>
+            </div>
+
+            <!-- Active Learning Live Status Banner -->
+            <div id="learning-status-banner" class="status-banner hidden">
+              <div class="banner-spinner"></div>
+              <div class="banner-text">
+                <strong id="banner-phase">Iniciando aprendizaje...</strong>
+                <span id="banner-hint">Espere a que el Broadlink entre en modo escucha...</span>
+              </div>
+              <button id="btn-cancel-learning" class="btn btn-danger btn-sm">Cancelar</button>
+            </div>
+
+            <div id="wizard-buttons-grid" class="buttons-grid">
+              <!-- Rendered dynamically by JS -->
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="btn-cancel-wizard" class="btn btn-secondary">Cancelar</button>
+          <button id="btn-save-remote" class="btn btn-success" disabled>
+            💾 Guardar Control Remoto
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
