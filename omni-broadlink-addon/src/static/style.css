@@ -275,6 +275,20 @@ body {
   margin-bottom: 4px;
 }
 
+.remote-entity-id {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.remote-entity-id code {
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #a5b4fc;
+}
+
 .remote-tag {
   font-size: 0.72rem;
   font-weight: 600;
@@ -323,6 +337,12 @@ body {
 .remote-btn-action.success {
   background: rgba(16, 185, 129, 0.25);
   border-color: var(--success-color);
+}
+
+.add-custom-btn-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .modal-overlay {

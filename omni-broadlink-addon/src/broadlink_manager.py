@@ -4,6 +4,7 @@ import base64
 import time
 import json
 import os
+import requests
 import broadlink
 from typing import Dict, Any, Optional
 
@@ -11,11 +12,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 _LOGGER = logging.getLogger("omni.broadlink")
 
 STORAGE_PATH = "/data/broadlink_remotes.json"
+SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
+HA_API_URL = "http://supervisor/core/api"
 
 class BroadlinkManager:
     def __init__(self, storage_path: str = STORAGE_PATH):
         self.storage_path = storage_path
-        self.discovered_devices: Dict[str, Any] = {}  # ip -> dev_info
+        self.discovered_devices: Dict[str, Any] = {}
         self._operation_lock = asyncio.Lock()
         self._learning_task: Optional[asyncio.Task] = None
         self._last_scan_at = 0.0
@@ -31,9 +34,10 @@ class BroadlinkManager:
             "frequency": None
         }
         self.remotes: Dict[str, Any] = self._load_remotes()
+        # Register entities in HA at startup
+        self.sync_all_ha_entities()
 
     def _load_remotes(self) -> Dict[str, Any]:
-        """Load remotes from JSON storage."""
         if os.path.exists(self.storage_path):
             try:
                 with open(self.storage_path, "r", encoding="utf-8") as f:
@@ -43,7 +47,6 @@ class BroadlinkManager:
         return {}
 
     def _save_remotes(self):
-        """Save remotes to JSON storage."""
         try:
             os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
             with open(self.storage_path, "w", encoding="utf-8") as f:
@@ -52,8 +55,59 @@ class BroadlinkManager:
         except Exception as e:
             _LOGGER.error(f"Error saving remotes to {self.storage_path}: {e}")
 
+    def sync_all_ha_entities(self):
+        """Sync all saved remotes as entities in Home Assistant via REST API."""
+        if not SUPERVISOR_TOKEN:
+            _LOGGER.info("SUPERVISOR_TOKEN not present. Skipping direct Home Assistant API sync.")
+            return
+        
+        headers = {
+            "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        for name, remote in self.remotes.items():
+            slug = name.lower().replace(" ", "_").replace("-", "_")
+            domain = remote.get("domain", "switch")
+            commands = remote.get("commands", {})
+
+            # 1. Main Device Entity State
+            main_entity_id = f"{domain}.omni_broadlink_{slug}"
+            state_data = {
+                "state": "off",
+                "attributes": {
+                    "friendly_name": f"Omni Broadlink {name}",
+                    "ip": remote.get("ip"),
+                    "type": remote.get("type"),
+                    "device_type": remote.get("device_type"),
+                    "commands_count": len(commands),
+                    "icon": "mdi:remote"
+                }
+            }
+            try:
+                requests.post(f"{HA_API_URL}/states/{main_entity_id}", headers=headers, json=state_data, timeout=3)
+            except Exception as e:
+                _LOGGER.debug(f"Failed to post state for {main_entity_id}: {e}")
+
+            # 2. Individual Button Entities in HA
+            for btn_key in commands.keys():
+                btn_entity_id = f"button.omni_broadlink_{slug}_{btn_key}"
+                btn_state_data = {
+                    "state": "off",
+                    "attributes": {
+                        "friendly_name": f"{name} - {btn_key.replace('_', ' ').title()}",
+                        "remote_name": name,
+                        "button_key": btn_key,
+                        "ip": remote.get("ip"),
+                        "icon": "mdi:remote-desktop"
+                    }
+                }
+                try:
+                    requests.post(f"{HA_API_URL}/states/{btn_entity_id}", headers=headers, json=btn_state_data, timeout=3)
+                except Exception as e:
+                    _LOGGER.debug(f"Failed to post button entity {btn_entity_id}: {e}")
+
     def _set_learning_state(self, status: str, **extra):
-        """Update active learning status."""
         self.learning_state = {
             "status": status,
             "captured_data": extra.pop("captured_data", None),
@@ -67,7 +121,6 @@ class BroadlinkManager:
         }
 
     async def scan_devices(self, force: bool = False) -> Dict[str, Any]:
-        """Scan for Broadlink devices in the local network."""
         if self.learning_state.get("status") in {"active_learning", "active_learning_rf_packet"}:
             return self.discovered_devices
 
@@ -109,7 +162,6 @@ class BroadlinkManager:
             return {}
 
     async def start_learning(self, ip: str, mode: str = "ir"):
-        """Start the IR or RF learning process in a background task."""
         if self._learning_task and not self._learning_task.done():
             self._learning_task.cancel()
 
@@ -125,7 +177,6 @@ class BroadlinkManager:
         self._learning_task = asyncio.create_task(self._learning_loop(ip, mode))
 
     async def cancel_learning(self, ip: Optional[str] = None):
-        """Cancel current learning mode."""
         if self._learning_task and not self._learning_task.done():
             self._learning_task.cancel()
         await self._cancel_device_learning(ip)
@@ -199,8 +250,6 @@ class BroadlinkManager:
                             attempts=attempt + 1,
                             last_error=err
                         )
-                        if attempt in {0, 9, 29, 59, 89}:
-                            _LOGGER.info(f"Esperando señal IR en {ip} (intento {attempt + 1}): {err}")
 
                 self._set_learning_state("error", mode="ir", phase="timeout", error_msg="Tiempo de espera agotado: No se recibió señal IR en 45 segundos.")
                 await self._cancel_device_learning(ip)
@@ -241,8 +290,6 @@ class BroadlinkManager:
                     except Exception as e:
                         err = str(e) or e.__class__.__name__
                         self._set_learning_state("active_learning", mode="rf", phase="rf_sweep", attempts=attempt + 1, last_error=err)
-                        if attempt in {0, 9, 29, 59}:
-                            _LOGGER.info(f"Barrido RF esperando en {ip} (intento {attempt + 1}): {err}")
 
                 if not frequency_found:
                     self._set_learning_state("error", mode="rf", phase="rf_sweep_timeout", error_msg="Timeout: No se pudo bloquear la frecuencia RF.")
@@ -350,7 +397,6 @@ class BroadlinkManager:
             await self._cancel_device_learning(ip)
 
     def save_remote(self, name: str, ip: str, remote_type: str, commands: Dict[str, str], domain: str = "switch", device_type: str = "custom") -> Dict[str, Any]:
-        """Save a new or updated virtual remote."""
         remote_data = {
             "name": name,
             "ip": ip,
@@ -362,18 +408,19 @@ class BroadlinkManager:
         }
         self.remotes[name] = remote_data
         self._save_remotes()
+        # Register entities in Home Assistant
+        self.sync_all_ha_entities()
         return remote_data
 
     def delete_remote(self, name: str) -> bool:
-        """Delete a saved virtual remote."""
         if name in self.remotes:
             del self.remotes[name]
             self._save_remotes()
+            self.sync_all_ha_entities()
             return True
         return False
 
     async def send_command(self, ip: str, b64_data: str) -> bool:
-        """Send a base64 encoded Broadlink packet."""
         try:
             data = base64.b64decode(b64_data)
             devices = await asyncio.to_thread(broadlink.discover, timeout=2)

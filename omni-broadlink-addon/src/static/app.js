@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let discoveredHubs = {};
   let savedRemotes = {};
   let capturedCommands = {};
+  let customButtonsList = [];
   let learningBtnKey = null;
   let pollIntervalRef = null;
 
@@ -23,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const wizRemoteType = document.getElementById('wiz-remote-type');
   const wizDeviceType = document.getElementById('wiz-device-type');
   const wizButtonsGrid = document.getElementById('wizard-buttons-grid');
+  const wizCustomBtnName = document.getElementById('wiz-custom-btn-name');
+  const btnAddCustomButton = document.getElementById('btn-add-custom-button');
 
   const statusBanner = document.getElementById('learning-status-banner');
   const bannerPhase = document.getElementById('banner-phase');
@@ -87,9 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     custom: [
       { key: 'power', label: 'Encendido', icon: '⏻' },
       { key: 'button_1', label: 'Botón 1', icon: '1' },
-      { key: 'button_2', label: 'Botón 2', icon: '2' },
-      { key: 'button_3', label: 'Botón 3', icon: '3' },
-      { key: 'button_4', label: 'Botón 4', icon: '4' }
+      { key: 'button_2', label: 'Botón 2', icon: '2' }
     ]
   };
 
@@ -147,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderRemotes() {
     const names = Object.keys(savedRemotes);
-    remoteCountBadge.textContent = `${names.length} Control(es)`;
+    remoteCountBadge.textContent = `${names.length} Dispositivo(s)`;
 
     if (names.length === 0) {
       remotesGrid.innerHTML = `
@@ -165,13 +166,16 @@ document.addEventListener('DOMContentLoaded', () => {
     remotesGrid.innerHTML = names.map(name => {
       const remote = savedRemotes[name];
       const btns = Object.keys(remote.commands || {});
+      const slug = name.lowerCase ? name.lowerCase() : name.toLowerCase().replace(/ /g, '_');
+      const entityId = `${remote.domain || 'switch'}.omni_broadlink_${slug}`;
 
       return `
         <div class="remote-card glass-card">
           <div class="remote-card-header">
             <div class="remote-card-title">
               <h3>${remote.name}</h3>
-              <span class="remote-tag">${remote.type} • ${remote.domain}</span>
+              <span class="remote-tag">${remote.type} • ${remote.domain || 'switch'}</span>
+              <p class="remote-entity-id">HA Entity: <code>${entityId}</code></p>
             </div>
             <button class="btn btn-danger btn-sm btn-delete-remote" data-name="${remote.name}">🗑️</button>
           </div>
@@ -245,7 +249,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function openWizard() {
     wizardModal.classList.remove('hidden');
     wizRemoteName.value = '';
+    wizCustomBtnName.value = '';
     capturedCommands = {};
+    customButtonsList = [];
     learningBtnKey = null;
     renderWizardButtons();
     updateSaveButtonState();
@@ -258,16 +264,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderWizardButtons() {
     const category = wizDeviceType.value || 'switch';
-    const buttons = BUTTONS_BY_TYPE[category] || BUTTONS_BY_TYPE.custom;
+    const presetButtons = BUTTONS_BY_TYPE[category] || BUTTONS_BY_TYPE.custom;
+    const allButtons = [...presetButtons, ...customButtonsList];
 
-    wizButtonsGrid.innerHTML = buttons.map(btn => {
+    wizButtonsGrid.innerHTML = allButtons.map(btn => {
       const isCaptured = !!capturedCommands[btn.key];
       return `
         <div class="wiz-btn-item ${isCaptured ? 'captured' : ''}">
-          <span style="font-size:1.2rem;">${btn.icon}</span>
+          <span style="font-size:1.2rem;">${btn.icon || '🔘'}</span>
           <span class="wiz-btn-label">${btn.label}</span>
           <button class="btn ${isCaptured ? 'btn-secondary' : 'btn-primary'} btn-sm btn-learn-key" data-key="${btn.key}">
-            ${isCaptured ? '✔ Re-capturar' : '⚡ Capturar'}
+            ${isCaptured ? '✔ Capturado' : '⚡ Capturar'}
           </button>
         </div>
       `;
@@ -279,6 +286,19 @@ document.addEventListener('DOMContentLoaded', () => {
         startLearning(key);
       });
     });
+  }
+
+  function addCustomButton() {
+    const rawName = wizCustomBtnName.value.trim();
+    if (!rawName) return;
+    const key = rawName.toLowerCase().replace(/ /g, '_').replace(/[^a-z0-9_]/g, '');
+    if (!key) return;
+
+    if (!customButtonsList.some(b => b.key === key)) {
+      customButtonsList.push({ key: key, label: rawName, icon: '⚡' });
+      wizCustomBtnName.value = '';
+      renderWizardButtons();
+    }
   }
 
   async function startLearning(btnKey) {
@@ -429,6 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
   btnCloseWizard.addEventListener('click', closeWizard);
   btnCancelWizard.addEventListener('click', closeWizard);
   btnCancelLearning.addEventListener('click', cancelLearning);
+  btnAddCustomButton.addEventListener('click', addCustomButton);
   wizDeviceType.addEventListener('change', renderWizardButtons);
   wizRemoteName.addEventListener('input', updateSaveButtonState);
   wizSelectHub.addEventListener('change', updateSaveButtonState);

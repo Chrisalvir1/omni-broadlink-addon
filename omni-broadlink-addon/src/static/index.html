@@ -24,7 +24,7 @@
         </div>
         <div>
           <h1>Omni Broadlink</h1>
-          <p class="subtitle">Controlador Inteligente de Señales IR & RF para Home Assistant</p>
+          <p class="subtitle">Controlador Inteligente de Señales IR & RF con Registro de Entidades para Home Assistant</p>
         </div>
       </div>
       <div class="header-actions">
@@ -57,8 +57,8 @@
       <!-- Saved Virtual Remotes Section -->
       <section class="section">
         <div class="section-header">
-          <h2>Controles Remotos Aprendidos</h2>
-          <span id="remote-count-badge" class="badge">0 Controles</span>
+          <h2>Controles Remotos & Dispositivos de Home Assistant</h2>
+          <span id="remote-count-badge" class="badge">0 Dispositivos</span>
         </div>
         <div id="remotes-grid" class="grid-container">
           <div class="empty-state glass-card">
@@ -76,7 +76,7 @@
     <div id="wizard-modal" class="modal-overlay hidden">
       <div class="modal-card glass-card">
         <div class="modal-header">
-          <h3>Wizard de Aprendizaje IR / RF</h3>
+          <h3>Wizard de Creación de Dispositivo & Aprendizaje IR / RF</h3>
           <button id="btn-close-wizard" class="btn-close">&times;</button>
         </div>
         <div class="modal-body">
@@ -84,7 +84,7 @@
           <!-- Step 1: Configuration Form -->
           <div class="form-group">
             <label for="wiz-remote-name">Nombre del Control / Dispositivo</label>
-            <input type="text" id="wiz-remote-name" placeholder="Ej. TV Sala, Aire Oficina, Ventilador Recámara" />
+            <input type="text" id="wiz-remote-name" placeholder="Ej. TV Sala, Aire Oficina, Tira LED, Ventilador" />
           </div>
 
           <div class="form-row">
@@ -108,16 +108,16 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label for="wiz-device-type">Tipo de Aparato</label>
+              <label for="wiz-device-type">Tipo de Aparato (Dominio HA)</label>
               <select id="wiz-device-type">
-                <option value="switch">Interruptor / Toma</option>
-                <option value="light">Luz / Tira LED</option>
-                <option value="fan">Ventilador</option>
-                <option value="tv">TV / Pantalla</option>
-                <option value="audio">Audio / Receiver</option>
-                <option value="climate">Aire Acondicionado</option>
-                <option value="projector">Proyector</option>
-                <option value="custom">Personalizado</option>
+                <option value="switch">Interruptor / Toma (switch)</option>
+                <option value="light">Luz / Tira LED (light)</option>
+                <option value="fan">Ventilador (fan)</option>
+                <option value="tv">TV / Pantalla (media_player)</option>
+                <option value="audio">Audio / Receiver (media_player)</option>
+                <option value="climate">Aire Acondicionado (climate)</option>
+                <option value="projector">Proyector (media_player)</option>
+                <option value="custom">Personalizado (custom)</option>
               </select>
             </div>
           </div>
@@ -125,8 +125,8 @@
           <!-- Buttons Learning Grid -->
           <div class="learning-section">
             <div class="learning-header">
-              <h4>Capturar Botones del Control</h4>
-              <p class="hint-text">Presione "Capturar" en cada botón que desee programar.</p>
+              <h4>Capturar Botones / Entidades</h4>
+              <p class="hint-text">Presione "Capturar" en cada botón o añada botones personalizados a voluntad.</p>
             </div>
 
             <!-- Active Learning Live Status Banner -->
@@ -139,6 +139,12 @@
               <button id="btn-cancel-learning" class="btn btn-danger btn-sm">Cancelar</button>
             </div>
 
+            <!-- Custom Button Add Input -->
+            <div class="add-custom-btn-row">
+              <input type="text" id="wiz-custom-btn-name" placeholder="Nombre de nuevo botón (ej. HDMI 2, Mute, Turbo, Modo Noche)" />
+              <button id="btn-add-custom-button" class="btn btn-secondary btn-sm">+ Añadir Botón</button>
+            </div>
+
             <div id="wizard-buttons-grid" class="buttons-grid">
               <!-- Rendered dynamically by JS -->
             </div>
@@ -148,7 +154,7 @@
         <div class="modal-footer">
           <button id="btn-cancel-wizard" class="btn btn-secondary">Cancelar</button>
           <button id="btn-save-remote" class="btn btn-success" disabled>
-            💾 Guardar Control Remoto
+            💾 Guardar Dispositivo & Crear Entidades
           </button>
         </div>
       </div>
