@@ -12,7 +12,9 @@ arch:
   - armv7
 homeassistant_api: true
 hassio_api: true
-options: {}
+options:
+  trusted_export_consumers: ""
 schema:
   trusted_proxy_cidrs: str?
   trusted_export_cidrs: str?
+  trusted_export_consumers: str?

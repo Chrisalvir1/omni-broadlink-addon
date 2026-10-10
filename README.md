@@ -20,9 +20,7 @@ Las mejoras de seguridad del PR de Fase 1 siguen siendo una dependencia separada
 4. Busca **Omni Broadlink**, haz clic en **Instalar** y activa la opción **Mostrar en la barra lateral**.
 ### Seguridad de la API local
 
-La interfaz y las rutas de control se sirven a través de Home Assistant Ingress. El complemento conserva `host_network` para detectar los dispositivos Broadlink por UDP, pero rechaza peticiones directas que no procedan de la red de Home Assistant y no devuelve los códigos IR/RF al navegador. La ruta `/api/export/remotes` conserva los códigos para integraciones de otros complementos y solo acepta conexiones de las redes de complementos de Home Assistant.
-
-En instalaciones con una red de Supervisor personalizada, configura `trusted_proxy_cidrs` con la IP/CIDR del proxy de Ingress. El valor predeterminado de Home Assistant OS usa `172.30.32.2/32` para el Supervisor. La exportación entre complementos se controla por separado con `trusted_export_cidrs`; su valor predeterminado es la red local `172.30.32.0/23` de complementos de Home Assistant y comparte los códigos con cualquier complemento que pueda conectarse desde ella. Limita ambos valores a las redes estrictamente necesarias.
+La interfaz y las rutas de control se sirven a través de Home Assistant Ingress. El complemento conserva `host_network` para detectar los dispositivos Broadlink por UDP, pero rechaza peticiones directas que no procedan de la red de Home Assistant y no devuelve los códigos IR/RF al navegador. `/api/broadlink/save` tampoco devuelve los códigos tras guardarlos.
 
 ## Ramas de Fase 2
 
@@ -30,3 +28,7 @@ La rama `codex/phase2-broadlink-resilience` incorpora reuso de sesiones BroadLin
 serialización por dispositivo y redescubrimiento tras fallos. Depende de que se
 apruebe e integre primero el PR de Fase 1 de seguridad (#1); esta rama, creada
 desde `main`, no incluye por sí misma esa protección de API.
+
+La ruta `/api/export/remotes` requiere dos controles: una conexión desde `trusted_export_cidrs` y credenciales independientes para el complemento consumidor. En Opciones del complemento, configura `trusted_export_consumers` como un objeto JSON serializado en texto, con un token aleatorio de al menos 32 caracteres por consumidor. Por ejemplo: `{"omni-tuya-local":"<token-aleatorio-de-48-caracteres>"}`. El consumidor debe enviar `X-Broadlink-Consumer: omni-tuya-local` y `Authorization: Bearer <token>`; genera un secreto distinto por consumidor y guárdalo en sus opciones protegidas. No incluyas esos secretos en YAML público, automatizaciones compartidas ni logs. La ruta devuelve 401 si falta la identidad, el token no coincide o el consumidor no está configurado. Cambiar las opciones requiere reiniciar el complemento.
+
+En instalaciones con una red de Supervisor personalizada, configura `trusted_proxy_cidrs` con la IP/CIDR del proxy de Ingress. La exportación conserva el filtro de red `trusted_export_cidrs`, pero la CIDR por sí sola ya no autoriza a leer códigos. Su valor predeterminado cubre la red local de complementos de Home Assistant; limita también ese valor a las redes necesarias. Las respuestas de listado de controles muestran nombres de comandos, pero nunca sus códigos.
