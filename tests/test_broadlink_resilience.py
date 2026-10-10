@@ -48,6 +48,14 @@ def test_missing_cached_device_triggers_fresh_discovery(tmp_path):
     manager.scan_devices.assert_awaited_once_with(force=True)
 
 
+def test_invalid_base64_is_rejected_before_device_discovery(tmp_path):
+    manager = _manager(tmp_path)
+    manager.scan_devices = AsyncMock(return_value={})
+
+    assert asyncio.run(manager.send_command("192.0.2.11", "%%%")) is False
+    manager.scan_devices.assert_not_awaited()
+
+
 def test_timed_out_command_invalidates_stale_connection_without_logging_payload(tmp_path, caplog):
     manager = _manager(tmp_path)
     ip = "192.0.2.12"

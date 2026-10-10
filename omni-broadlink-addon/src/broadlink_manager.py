@@ -433,7 +433,9 @@ class BroadlinkManager:
         release_lock = True
         worker: asyncio.Task | None = None
         try:
-            data = base64.b64decode(b64_data)
+            # Keep the strict validation added by the API-security changes;
+            # permissive decoding can silently discard attacker-controlled data.
+            data = base64.b64decode(b64_data, validate=True)
             dev = self._device_instances.get(ip)
             if dev is None:
                 await self.scan_devices(force=True)
