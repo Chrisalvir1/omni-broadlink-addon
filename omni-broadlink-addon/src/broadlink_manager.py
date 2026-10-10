@@ -15,12 +15,16 @@ _LOGGER = logging.getLogger("omni.broadlink")
 STORAGE_PATH = "/data/broadlink_remotes.json"
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
 HA_API_URL = "http://supervisor/core/api"
+COMMAND_TIMEOUT_SECONDS = 8.0
 
 class BroadlinkManager:
     def __init__(self, storage_path: str = STORAGE_PATH):
         self.storage_path = storage_path
         self.discovered_devices: Dict[str, Any] = {}
         self._operation_lock = asyncio.Lock()
+        self._device_instances: Dict[str, Any] = {}
+        self._device_command_locks: Dict[str, asyncio.Lock] = {}
+        self._command_timeout = COMMAND_TIMEOUT_SECONDS
         self._learning_task: Optional[asyncio.Task] = None
         self._last_scan_at = 0.0
         self._scan_ttl = 30.0
@@ -164,12 +168,15 @@ class BroadlinkManager:
                 _LOGGER.info("Scanning for Broadlink devices on local LAN...")
                 devices = await asyncio.to_thread(broadlink.discover, timeout=3)
                 self.discovered_devices.clear()
+                self._device_instances.clear()
                 for dev in devices:
                     try:
                         await asyncio.to_thread(dev.auth)
                         mac_str = "".join(f"{b:02x}" for b in dev.mac)
-                        self.discovered_devices[dev.host[0]] = {
-                            "ip": dev.host[0],
+                        ip = dev.host[0]
+                        self._device_instances[ip] = dev
+                        self.discovered_devices[ip] = {
+                            "ip": ip,
                             "port": dev.host[1],
                             "mac": mac_str,
                             "name": getattr(dev, "name", None) or "Broadlink Device",
@@ -446,23 +453,50 @@ class BroadlinkManager:
         return False
 
     async def send_command(self, ip: str, b64_data: str) -> bool:
+        command_lock = self._device_command_locks.setdefault(ip, asyncio.Lock())
+        await command_lock.acquire()
+        release_lock = True
+        worker: asyncio.Task | None = None
         try:
+            # Keep the strict validation added by the API-security changes;
+            # permissive decoding can silently discard attacker-controlled data.
             data = base64.b64decode(b64_data, validate=True)
-            devices = await asyncio.to_thread(broadlink.discover, timeout=2)
-            dev = None
-            for d in devices:
-                if d.host[0] == ip:
-                    dev = d
-                    break
-
-            if not dev:
-                _LOGGER.error(f"Broadlink device at IP {ip} not found for sending command.")
+            dev = self._device_instances.get(ip)
+            if dev is None:
+                await self.scan_devices(force=True)
+                dev = self._device_instances.get(ip)
+            if dev is None:
+                _LOGGER.warning("Broadlink device at %s was not discovered for command send", ip)
                 return False
 
-            await asyncio.to_thread(dev.auth)
-            await asyncio.to_thread(dev.send_data, data)
-            _LOGGER.info(f"Comando Broadlink enviado exitosamente a {ip}")
+            def _send_sync() -> None:
+                dev.auth()
+                dev.send_data(data)
+
+            worker = asyncio.create_task(asyncio.to_thread(_send_sync))
+            await asyncio.wait_for(asyncio.shield(worker), timeout=self._command_timeout)
+            _LOGGER.info("Broadlink command sent to %s", ip)
             return True
-        except Exception as e:
-            _LOGGER.error(f"Error al enviar comando Broadlink a {ip}: {e}")
+        except asyncio.TimeoutError:
+            self._device_instances.pop(ip, None)
+            self.discovered_devices.pop(ip, None)
+            if worker and not worker.done():
+                # Keep this device's async lock until the blocking library call
+                # completes; otherwise another command could overlap it.
+                release_lock = False
+                worker.add_done_callback(lambda _task: command_lock.release())
+            _LOGGER.warning("Broadlink command to %s timed out", ip)
             return False
+        except asyncio.CancelledError:
+            if worker and not worker.done():
+                release_lock = False
+                worker.add_done_callback(lambda _task: command_lock.release())
+            raise
+        except Exception as err:
+            self._device_instances.pop(ip, None)
+            self.discovered_devices.pop(ip, None)
+            _LOGGER.error("Broadlink command to %s failed (%s)", ip, err.__class__.__name__)
+            return False
+        finally:
+            if release_lock:
+                command_lock.release()
