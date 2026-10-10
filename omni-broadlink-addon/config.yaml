@@ -13,4 +13,6 @@ arch:
 homeassistant_api: true
 hassio_api: true
 options: {}
-schema: {}
+schema:
+  trusted_proxy_cidrs: str?
+  trusted_export_cidrs: str?

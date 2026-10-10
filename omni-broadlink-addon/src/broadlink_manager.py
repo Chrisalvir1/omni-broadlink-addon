@@ -4,6 +4,7 @@ import base64
 import time
 import json
 import os
+import tempfile
 import requests
 import broadlink
 from typing import Dict, Any, Optional
@@ -40,6 +41,7 @@ class BroadlinkManager:
     def _load_remotes(self) -> Dict[str, Any]:
         if os.path.exists(self.storage_path):
             try:
+                os.chmod(self.storage_path, 0o600)
                 with open(self.storage_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
@@ -47,13 +49,36 @@ class BroadlinkManager:
         return {}
 
     def _save_remotes(self):
+        """Persist learned codes atomically with owner-only file permissions."""
+        temporary_path = None
         try:
-            os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
-            with open(self.storage_path, "w", encoding="utf-8") as f:
-                json.dump(self.remotes, f, indent=2, ensure_ascii=False)
-            _LOGGER.info(f"Saved {len(self.remotes)} remotes to {self.storage_path}")
+            directory = os.path.dirname(self.storage_path) or "."
+            os.makedirs(directory, mode=0o700, exist_ok=True)
+            try:
+                os.chmod(directory, 0o700)
+            except OSError:
+                _LOGGER.warning("Could not enforce private permissions on Broadlink data directory")
+            fd, temporary_path = tempfile.mkstemp(prefix=".broadlink-", suffix=".tmp", dir=directory)
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(self.remotes, stream, indent=2, ensure_ascii=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, self.storage_path)
+            temporary_path = None
+            try:
+                os.chmod(self.storage_path, 0o600)
+            except OSError:
+                _LOGGER.warning("Could not enforce private permissions on Broadlink storage")
+            _LOGGER.info("Saved %s Broadlink remote(s)", len(self.remotes))
         except Exception as e:
-            _LOGGER.error(f"Error saving remotes to {self.storage_path}: {e}")
+            _LOGGER.error("Error saving Broadlink remotes (%s)", e.__class__.__name__)
+        finally:
+            if temporary_path:
+                try:
+                    os.unlink(temporary_path)
+                except OSError:
+                    pass
 
     def sync_all_ha_entities(self):
         """Sync all saved remotes as entities in Home Assistant via REST API."""
@@ -422,7 +447,7 @@ class BroadlinkManager:
 
     async def send_command(self, ip: str, b64_data: str) -> bool:
         try:
-            data = base64.b64decode(b64_data)
+            data = base64.b64decode(b64_data, validate=True)
             devices = await asyncio.to_thread(broadlink.discover, timeout=2)
             dev = None
             for d in devices:
