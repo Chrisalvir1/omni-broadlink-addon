@@ -51,7 +51,7 @@ def test_ingress_ui_api_remains_available_and_does_not_return_codes(monkeypatch)
     assert "c2VjcmV0" not in response.text
 
 
-def test_export_is_available_to_trusted_local_addons_and_retains_compatibility(monkeypatch):
+def test_export_requires_a_provisioned_consumer_token(monkeypatch):
     monkeypatch.setattr(main, "_trusted_networks", lambda setting="trusted_proxy_cidrs": (__import__("ipaddress").ip_network("127.0.0.1/32"), __import__("ipaddress").ip_network("::1/128")))
     monkeypatch.setattr(
         main.manager,
@@ -59,9 +59,47 @@ def test_export_is_available_to_trusted_local_addons_and_retains_compatibility(m
         {"TV": {"name": "TV", "commands": {"power": "c2VjcmV0"}}},
     )
 
-    response = client.get("/api/export/remotes")
+    monkeypatch.setattr(main, "_trusted_export_consumers", lambda: {"omni-tuya": "a" * 48})
+    response = client.get(
+        "/api/export/remotes",
+        headers={"X-Broadlink-Consumer": "omni-tuya", "Authorization": f"Bearer {'a' * 48}"},
+    )
     assert response.status_code == 200
     assert response.json()["remotes"]["TV"]["commands"]["power"] == "c2VjcmV0"
+
+
+def test_export_rejects_missing_and_unknown_consumer_credentials(monkeypatch):
+    monkeypatch.setattr(main, "_trusted_export_consumers", lambda: {"known-addon": "b" * 48})
+    missing = client.get("/api/export/remotes")
+    unknown = client.get(
+        "/api/export/remotes",
+        headers={"X-Broadlink-Consumer": "unknown-addon", "Authorization": f"Bearer {'b' * 48}"},
+    )
+    wrong = client.get(
+        "/api/export/remotes",
+        headers={"X-Broadlink-Consumer": "known-addon", "Authorization": f"Bearer {'c' * 48}"},
+    )
+    assert [missing.status_code, unknown.status_code, wrong.status_code] == [401, 401, 401]
+    assert "b" * 48 not in unknown.text
+    assert "c" * 48 not in wrong.text
+
+
+def test_save_response_never_echoes_codes(monkeypatch):
+    monkeypatch.setattr(main, "_trusted_networks", lambda setting="trusted_proxy_cidrs": (__import__("ipaddress").ip_network("127.0.0.1/32"), __import__("ipaddress").ip_network("::1/128")))
+    secret = "c2VjcmV0"
+    monkeypatch.setattr(
+        main.manager,
+        "save_remote",
+        lambda **_kwargs: {"name": "TV", "commands": {"power": secret}},
+    )
+    response = client.post(
+        "/api/broadlink/save",
+        headers=INGRESS_HEADERS,
+        json={"name": "TV", "ip": "192.0.2.4", "commands": {"power": secret}},
+    )
+    assert response.status_code == 200
+    assert response.json()["remote"]["commands"] == {"power": ""}
+    assert secret not in response.text
 
 
 def test_external_peer_cannot_spoof_ingress_headers(monkeypatch):
@@ -134,7 +172,7 @@ def test_rejects_command_injection_characters_in_remote_and_button_names(monkeyp
 def test_api_has_no_wildcard_cors_headers(monkeypatch):
     monkeypatch.setattr(main, "_trusted_networks", lambda setting="trusted_proxy_cidrs": (__import__("ipaddress").ip_network("127.0.0.1/32"), __import__("ipaddress").ip_network("::1/128")))
     response = client.get("/api/export/remotes", headers={"Origin": "https://attacker.example"})
-    assert response.status_code == 200
+    assert response.status_code == 401
     assert "access-control-allow-origin" not in response.headers
 
 

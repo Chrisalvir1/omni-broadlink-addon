@@ -3,6 +3,7 @@ import logging
 import ipaddress
 import json
 import re
+import hmac
 from ipaddress import IPv4Address
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional
@@ -56,14 +57,54 @@ def _is_trusted_peer(request: Request, *, for_export: bool = False) -> bool:
     return any(address.version == network.version and address in network for network in networks)
 
 
+def _trusted_export_consumers() -> dict[str, str]:
+    """Return explicitly provisioned consumer credentials without logging them."""
+    raw = os.environ.get("BROADLINK_TRUSTED_EXPORT_CONSUMERS")
+    if raw is None:
+        try:
+            with open("/data/options.json", encoding="utf-8") as options_file:
+                raw = json.load(options_file).get("trusted_export_consumers")
+        except (OSError, ValueError, AttributeError):
+            raw = None
+    if not raw:
+        return {}
+    try:
+        configured = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(configured, dict):
+        return {}
+    return {
+        consumer: token
+        for consumer, token in configured.items()
+        if isinstance(consumer, str)
+        and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", consumer)
+        and isinstance(token, str)
+        and len(token) >= 32
+    }
+
+
+def _is_authorized_export_consumer(request: Request) -> bool:
+    consumer = request.headers.get("X-Broadlink-Consumer", "")
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, supplied_token = authorization.partition(" ")
+    expected_token = _trusted_export_consumers().get(consumer)
+    return bool(
+        expected_token
+        and scheme.lower() == "bearer"
+        and supplied_token
+        and hmac.compare_digest(supplied_token, expected_token)
+    )
+
+
 async def protect_api(request: Request, call_next):
     is_export = request.url.path == "/api/export/remotes"
     if not _is_trusted_peer(request, for_export=is_export):
         return JSONResponse(status_code=403, content={"detail": "Acceso permitido solo desde Home Assistant."})
 
-    # The export route is intended for local HA add-ons; keep it available to
-    # trusted add-on callers while preventing direct LAN access.
     if is_export:
+        if not _is_authorized_export_consumer(request):
+            return JSONResponse(status_code=401, content={"detail": "Consumidor de exportación no autorizado."})
         return await call_next(request)
 
     ingress_path = request.headers.get("X-Ingress-Path", "")
@@ -198,7 +239,9 @@ async def save_remote(req: SaveRemoteRequest):
         domain=req.domain,
         device_type=req.device_type
     )
-    return {"ok": True, "remote": remote}
+    # Codes are write-only through this endpoint; the Ingress UI only needs
+    # command names and metadata after saving.
+    return {"ok": True, "remote": _remote_metadata(remote)}
 
 @app.post("/api/broadlink/delete")
 async def delete_remote(req: DeleteRemoteRequest):
@@ -227,11 +270,15 @@ async def send_command(req: SendCommandRequest):
 
 @app.get("/api/export/remotes")
 async def export_remotes():
-    """Public endpoint to expose learned Broadlink devices to external Add-ons."""
+    """Expose codes only to explicitly provisioned, authenticated add-ons."""
     return {
         "version": "1.0.0",
         "remotes": manager.remotes
     }
+
+
+def _remote_metadata(remote: dict[str, Any]) -> dict[str, Any]:
+    return {**remote, "commands": {name: "" for name in remote.get("commands", {})}}
 
 # Mount static files for HA Ingress frontend UI
 static_dir = os.path.join(os.path.dirname(__file__), "static")
