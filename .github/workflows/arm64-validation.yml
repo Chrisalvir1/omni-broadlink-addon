@@ -33,15 +33,25 @@ jobs:
           test "$(docker image inspect broadlink-arm64:ci --format '{{.Architecture}}')" = arm64
       - name: Verify ARM64 Python and compiled dependencies
         run: |
-          docker run --rm --network none --entrypoint python3 broadlink-arm64:ci -c '
-            import platform, sys;
-            assert platform.machine() == "aarch64";
-            assert sys.version_info[:2] == (3, 11);
-            import broadlink, fastapi, pydantic, requests, uvicorn;
-            from cffi import FFI;
-            from cryptography.hazmat.primitives.ciphers.aead import AESGCM;
-            FFI(); AESGCM.generate_key(bit_length=128);
-            import src.main;
-            print("ARM64 application imports and compiled dependencies verified");
-          '
+          docker run --rm -i --network none --entrypoint python3 broadlink-arm64:ci - <<'PY'
+          import platform
+          import sys
+
+          assert platform.machine() == "aarch64"
+          assert sys.version_info[:2] == (3, 11)
+
+          import broadlink
+          import fastapi
+          import pydantic
+          import requests
+          import uvicorn
+          from cffi import FFI
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+          FFI()
+          AESGCM.generate_key(bit_length=128)
+          import src.main
+
+          print("ARM64 application imports and compiled dependencies verified")
+          PY
           docker run --rm --network none --entrypoint python3 broadlink-arm64:ci -m pip check
