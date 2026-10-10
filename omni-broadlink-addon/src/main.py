@@ -8,6 +8,7 @@ from ipaddress import IPv4Address
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -141,6 +142,18 @@ async def app_lifespan(_app: FastAPI):
 
 app = FastAPI(title="Omni Broadlink Home Assistant Add-on", lifespan=app_lifespan)
 app.middleware("http")(protect_api)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_without_inputs(_request: Request, error: RequestValidationError):
+    """Keep useful field errors without echoing codes, credentials or bodies."""
+    return JSONResponse(
+        status_code=422,
+        content={"detail": [
+            {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
+            for item in error.errors()
+        ]},
+    )
 
 class RequestModel(BaseModel):
     model_config = ConfigDict(extra="forbid")

@@ -1,4 +1,4 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=alpine:3.19
 FROM ${BUILD_FROM}
 
 # Install Python, build tools, and network utilities required by Broadlink.

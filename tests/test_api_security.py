@@ -15,6 +15,22 @@ INGRESS_HEADERS = {
 }
 
 
+def test_save_validation_errors_do_not_echo_codes_or_credentials():
+    code = "c2VjcmV0"
+    token = "synthetic-consumer-credential-for-regression-only"
+    payloads = [
+        {"name": "TV", "ip": "192.0.2.4", "commands": {"invalid<name": code}},
+        {"name": "TV", "ip": "192.0.2.4", "commands": {"power": code}, "consumer_token": token},
+    ]
+    for payload in payloads:
+        response = client.post("/api/broadlink/save", json=payload, headers=INGRESS_HEADERS)
+        assert response.status_code == 422
+        assert code not in response.text
+        assert token not in response.text
+        assert response.json()["detail"]
+        assert all(set(item) == {"loc", "msg", "type"} for item in response.json()["detail"])
+
+
 def test_api_rejects_direct_requests_without_ingress(monkeypatch):
     monkeypatch.setattr(main, "_trusted_networks", lambda setting="trusted_proxy_cidrs": (__import__("ipaddress").ip_network("127.0.0.1/32"), __import__("ipaddress").ip_network("::1/128")))
     response = client.get("/api/broadlink/devices")
