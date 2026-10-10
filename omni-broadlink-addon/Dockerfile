@@ -1,7 +1,7 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=alpine:3.19
 FROM ${BUILD_FROM}
 
-# Install Python, dependencies, and network tools
+# Install Python, build tools, and network utilities required by Broadlink.
 RUN apk add --no-cache \
     python3 \
     py3-pip \
@@ -15,13 +15,9 @@ RUN apk add --no-cache \
 # Create app directory
 WORKDIR /app
 
-# Install python dependencies
-RUN pip3 install --no-cache-dir --break-system-packages \
-    broadlink \
-    fastapi \
-    uvicorn \
-    pydantic \
-    requests
+# Install pinned runtime dependencies so rebuilds are reproducible.
+COPY requirements.lock /app/requirements.lock
+RUN pip3 install --no-cache-dir --break-system-packages --require-hashes -r /app/requirements.lock
 
 # Copy application files
 COPY src/ /app/src/
