@@ -17,6 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: python -m pip install pytest==9.1.1 broadlink==0.19.0
+      # broadlink_manager imports requests at module load time. Keep this
+      # workflow self-contained even when the Phase 1 requirements lock is
+      # not part of the PR's base branch yet.
+      - run: python -m pip install pytest==9.1.1 broadlink==0.19.0 requests==2.34.2
       - run: python -m compileall -q omni-broadlink-addon/src
       - run: python -m pytest -q
